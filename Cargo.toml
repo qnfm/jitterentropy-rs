@@ -1,0 +1,15 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/jent-core",
+    "crates/jent-platform",
+    "crates/jent-ffi",
+]
+
+[workspace.package]
+edition = "2021"
+license = "GPL-2.0-or-later OR BSD-3-Clause"
+repository = "https://github.com/smuellerDD/jitterentropy-library"
+
+[workspace.dependencies]
+sha3 = { version = "0.10", default-features = false }
