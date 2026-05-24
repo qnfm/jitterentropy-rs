@@ -1,15 +1,30 @@
-[workspace]
-resolver = "2"
-members = [
-    "crates/jent-core",
-    "crates/jent-platform",
-    "crates/jent-ffi",
-]
-
-[workspace.package]
+[package]
+name = "jitterentropy-rs"
+version = "0.1.0"
 edition = "2021"
-license = "GPL-2.0-or-later OR BSD-3-Clause"
-repository = "https://github.com/smuellerDD/jitterentropy-library"
+rust-version = "1.70"
+license = "BSD-3-Clause OR GPL-2.0-or-later"
+description = "Rust rewrite scaffold for the CPU timing jitter entropy source"
+repository = "https://github.com/qnfm/jitterentropy-rs"
+readme = "README.md"
+keywords = ["entropy", "rng", "jitter", "sp800-90b"]
+categories = ["cryptography", "no-std"]
 
-[workspace.dependencies]
+[lib]
+name = "jitterentropy"
+crate-type = ["rlib", "cdylib", "staticlib"]
+
+[features]
+default = ["std", "alloc", "ffi"]
+std = []
+alloc = []
+ffi = []
+force-fips = []
+raw-noise = []
+
+[dependencies]
 sha3 = { version = "0.10", default-features = false }
+zeroize = { version = "1", default-features = false, features = ["alloc"] }
+
+[dev-dependencies]
+hex = "0.4"
