@@ -5,7 +5,9 @@ use zeroize::Zeroize;
 
 use crate::conditioner::{Conditioner, Shake256Conditioner, OUTPUT_BLOCK_BYTES};
 use crate::error::{InitError, ReadError};
-use crate::flags::{Flags, MemoryLimit};
+use crate::flags::Flags;
+#[cfg(feature = "alloc")]
+use crate::flags::MemoryLimit;
 use crate::health::{HealthFailure, HealthState};
 #[cfg(feature = "alloc")]
 use crate::memory::MemoryNoise;
@@ -16,7 +18,9 @@ use crate::JENT_VERSION;
 const MIN_OSR: u32 = 1;
 const MAX_OSR: u32 = 128;
 const POWERUP_TESTS: usize = 1024;
+#[cfg(feature = "alloc")]
 const DEFAULT_MEMORY_SIZE: usize = 512 * 1024;
+#[cfg(feature = "alloc")]
 const DEFAULT_MEMORY_ROUNDS: usize = 128;
 const NTG1_PRESEED_SAMPLES: usize = 240;
 
@@ -95,6 +99,8 @@ impl<T: Timer> EntropyCollector<T> {
         memory_size: Option<usize>,
         mut timer: T,
     ) -> Result<Self, InitError> {
+        #[cfg(not(feature = "alloc"))]
+        let _ = memory_size;
         if flags.contains(Flags::FORCE_INTERNAL_TIMER)
             && flags.contains(Flags::DISABLE_INTERNAL_TIMER)
         {
@@ -297,6 +303,7 @@ impl<T: Timer> EntropyCollector<T> {
         for _ in 0..NTG1_PRESEED_SAMPLES {
             acc ^= self.sample().map_err(|_| InitError::Health)?;
         }
+        core::hint::black_box(acc);
         #[cfg(feature = "alloc")]
         if let Some(mem) = self.memory.as_mut() {
             fn ignore_bytes(_: &[u8]) {}
@@ -351,6 +358,7 @@ impl<T: Timer> EntropyCollector<T> {
     }
 }
 
+#[cfg(feature = "alloc")]
 fn configured_memory_size(flags: Flags) -> usize {
     match flags.memory_limit() {
         MemoryLimit::Auto => DEFAULT_MEMORY_SIZE,
