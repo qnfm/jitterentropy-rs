@@ -28,6 +28,10 @@ impl MemoryNoise {
         self.buf.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.buf.is_empty()
+    }
+
     #[inline(never)]
     pub fn disturb<F: FnMut(&[u8])>(&mut self, seed: u64, rounds: usize, mut sink: F) {
         let mask = self.buf.len() - 1;
