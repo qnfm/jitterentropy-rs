@@ -27,7 +27,7 @@ pub fn platform_now() -> Option<u64> {
         core::arch::x86_64::_mm_lfence();
         let v = core::arch::x86_64::_rdtsc();
         core::arch::x86_64::_mm_lfence();
-        return Some(black_box(v));
+        Some(black_box(v))
     }
     #[cfg(target_arch = "x86")]
     unsafe {

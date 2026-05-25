@@ -26,7 +26,7 @@ pub extern "C" fn jent_entropy_init() -> c_int {
 
 #[no_mangle]
 pub extern "C" fn jent_entropy_init_ex(osr: c_uint, flags: c_uint) -> c_int {
-    match EntropyCollector::new(osr as u32, Flags(flags as u32)) {
+    match EntropyCollector::new(osr, Flags(flags)) {
         Ok(_) => 0,
         Err(e) => e as c_int,
     }
@@ -34,12 +34,20 @@ pub extern "C" fn jent_entropy_init_ex(osr: c_uint, flags: c_uint) -> c_int {
 
 #[no_mangle]
 pub extern "C" fn jent_entropy_collector_alloc(osr: c_uint, flags: c_uint) -> *mut rand_data {
-    match EntropyCollector::new(osr as u32, Flags(flags as u32)) {
+    match EntropyCollector::new(osr, Flags(flags)) {
         Ok(inner) => Box::into_raw(Box::new(rand_data { inner })),
         Err(_) => ptr::null_mut(),
     }
 }
 
+/// Free an entropy collector allocated by [`jent_entropy_collector_alloc`].
+///
+/// # Safety
+///
+/// `ec` must be either null or a pointer previously returned by
+/// `jent_entropy_collector_alloc` that has not already been freed. Passing any
+/// other pointer, passing the same pointer twice, or using the pointer after
+/// this function returns is undefined behavior.
 #[no_mangle]
 pub unsafe extern "C" fn jent_entropy_collector_free(ec: *mut rand_data) {
     if !ec.is_null() {
@@ -49,6 +57,14 @@ pub unsafe extern "C" fn jent_entropy_collector_free(ec: *mut rand_data) {
     }
 }
 
+/// Fill `data` with entropy bytes from an existing collector.
+///
+/// # Safety
+///
+/// `ec` must be a valid, non-null pointer to a live `rand_data` allocated by
+/// this crate. `data` must be valid for writes of `len` bytes. The memory
+/// regions referenced by `ec` and `data` must not alias in a way that violates
+/// Rust's aliasing rules.
 #[no_mangle]
 pub unsafe extern "C" fn jent_read_entropy(
     ec: *mut rand_data,
@@ -66,6 +82,15 @@ pub unsafe extern "C" fn jent_read_entropy(
     }
 }
 
+/// Fill `data` with entropy and clear the caller's collector pointer on
+/// permanent failure.
+///
+/// # Safety
+///
+/// `ecp` must be a valid, non-null pointer to a collector pointer. If `*ecp` is
+/// non-null, it must point to a live `rand_data` allocated by this crate.
+/// `data` must be valid for writes of `len` bytes. The caller must not use
+/// `*ecp` again if this function clears it to null.
 #[no_mangle]
 pub unsafe extern "C" fn jent_read_entropy_safe(
     ecp: *mut *mut rand_data,
@@ -99,6 +124,13 @@ pub unsafe extern "C" fn jent_read_entropy_safe(
     unsafe { jent_read_entropy(new_ec, data, len) }
 }
 
+/// Write collector status JSON into a caller-provided buffer.
+///
+/// # Safety
+///
+/// `ec` must be a valid, non-null pointer to a live `rand_data`. `buf` must be
+/// valid for writes of `buflen` bytes. If `buflen` is nonzero, the buffer must
+/// be writable for the full length and must not alias `ec`.
 #[no_mangle]
 pub unsafe extern "C" fn jent_status(
     ec: *const rand_data,
@@ -117,7 +149,7 @@ pub unsafe extern "C" fn jent_status(
             ptr::copy_nonoverlapping(bytes.as_ptr(), buf.cast::<u8>(), n);
             *buf.add(n) = 0;
         }
-        return n as c_int;
+        n as c_int
     }
     #[cfg(not(feature = "alloc"))]
     {

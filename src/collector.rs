@@ -415,9 +415,10 @@ mod tests {
             None,
             CounterTimer::new(),
         )
-        .unwrap();
-        let mut out = [0u8; 32];
-        ec.fill_bytes(&mut out).unwrap();
+        .expect("deterministic jitter-like test timer should pass startup validation");
+        let mut out = [0u8; 64];
+        ec.fill_bytes(&mut out)
+            .expect("collector should fill bytes with deterministic test timer");
         assert!(out.iter().any(|&b| b != 0));
     }
 }
