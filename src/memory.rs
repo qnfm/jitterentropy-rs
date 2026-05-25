@@ -1,8 +1,8 @@
 #[cfg(feature = "alloc")]
-use alloc::vec;
+use alloc::{vec, vec::Vec};
 #[cfg(feature = "alloc")]
-use alloc::vec::Vec;
 use core::hint::black_box;
+#[cfg(feature = "alloc")]
 use zeroize::Zeroize;
 
 #[cfg(feature = "alloc")]

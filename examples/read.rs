@@ -7,6 +7,8 @@ fn main() {
         .build()
         .expect("collector should initialize");
 
-    let bytes = ec.read_entropy(32).expect("entropy read should succeed");
+    let mut bytes = [0u8; 32];
+    ec.fill_bytes(&mut bytes)
+        .expect("entropy read should succeed");
     println!("{:02x?}", bytes);
 }

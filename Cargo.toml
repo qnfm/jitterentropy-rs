@@ -12,7 +12,7 @@ categories = ["cryptography", "no-std"]
 
 [lib]
 name = "jitterentropy"
-crate-type = ["rlib", "cdylib", "staticlib"]
+crate-type = ["rlib"]
 
 [features]
 default = ["std", "alloc", "ffi"]
