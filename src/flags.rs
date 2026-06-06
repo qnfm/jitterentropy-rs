@@ -14,7 +14,7 @@ impl Flags {
     pub const MEMSIZE_SHIFT: u32 = 27;
     pub const HASHLOOP_SHIFT: u32 = 24;
     pub const HASHLOOP_MASK: u32 = 0x7 << Self::HASHLOOP_SHIFT;
-    pub const MEMSIZE_MASK: u32 = 0xffff_ffffu32.wrapping_shl(Self::MEMSIZE_SHIFT);
+    pub const MEMSIZE_MASK: u32 = 0x1f << Self::MEMSIZE_SHIFT;
 
     pub const fn empty() -> Self {
         Self(0)
@@ -133,16 +133,29 @@ impl MemoryLimit {
     pub const fn from_raw(raw: u32) -> Self {
         if raw == 0 {
             Self::Auto
+        } else if raw > 20 {
+            // Upstream defines encodings only through JENT_MAX_MEMSIZE_512MB.
+            // Clamp invalid high-bit patterns defensively instead of panicking
+            // or interpreting them as multi-gigabyte allocations.
+            Self::KiB(512 * 1024)
         } else {
-            // Encode as KiB and clamp instead of allowing debug-build shift panics.
-            // The high bits are controlled by the C-style flags word, so invalid
-            // encodings must be handled defensively.
-            let shift = raw + 9;
-            if shift >= 31 {
-                Self::KiB(1 << 30)
-            } else {
-                Self::KiB(1 << shift)
-            }
+            // Upstream encodes 1 => 1 KiB, 2 => 2 KiB, ... 20 => 512 MiB.
+            Self::KiB(1 << (raw - 1))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn memory_limit_matches_upstream_flag_encoding() {
+        assert_eq!(MemoryLimit::from_raw(0), MemoryLimit::Auto);
+        assert_eq!(MemoryLimit::from_raw(1), MemoryLimit::KiB(1));
+        assert_eq!(MemoryLimit::from_raw(10), MemoryLimit::KiB(512));
+        assert_eq!(MemoryLimit::from_raw(11), MemoryLimit::KiB(1024));
+        assert_eq!(MemoryLimit::from_raw(20), MemoryLimit::KiB(512 * 1024));
+        assert_eq!(MemoryLimit::from_raw(31), MemoryLimit::KiB(512 * 1024));
     }
 }

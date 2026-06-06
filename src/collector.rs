@@ -109,6 +109,7 @@ impl<T: Timer> EntropyCollector<T> {
     /// collector with a higher OSR and stronger collection settings rather than
     /// returning the intermittent error directly from `jent_read_entropy_safe`.
     /// This helper keeps that policy out of the FFI module.
+    #[cfg(feature = "ffi")]
     pub(crate) fn recovery_config(&self) -> Option<(u32, Flags)> {
         let next_osr = self.osr.checked_add(1)?;
         if next_osr > MAX_OSR {
@@ -178,6 +179,18 @@ impl<T: Timer> EntropyCollector<T> {
     }
 
     pub fn fill_bytes(&mut self, out: &mut [u8]) -> Result<(), ReadError> {
+        if let Err(e) = self.try_fill_bytes(out) {
+            // Match the C API contract: when a health test fails, callers must
+            // not receive partially generated data. This also protects safe Rust
+            // callers from accidentally using a prefix produced before a later
+            // block failed.
+            out.zeroize();
+            return Err(e);
+        }
+        Ok(())
+    }
+
+    fn try_fill_bytes(&mut self, out: &mut [u8]) -> Result<(), ReadError> {
         if !self.permanent_failure.is_empty() {
             return Err(Self::map_failure(self.permanent_failure));
         }
@@ -230,17 +243,18 @@ impl<T: Timer> EntropyCollector<T> {
             return Err(ReadError::TimerUnavailable);
         }
         let delta = after.wrapping_sub(before);
+        if delta == 0 {
+            return Err(ReadError::TimerUnavailable);
+        }
         let delta_prev = after.wrapping_sub(self.last_time);
         self.last_time = after;
 
         let folded = delta ^ delta_prev.rotate_left(17) ^ after.rotate_right(9);
-        if folded == 0 {
-            return Err(ReadError::TimerUnavailable);
-        }
-        let failure = self.health.observe_delta(folded);
+        let failure = self.health.observe_delta(delta);
         if !failure.is_empty() {
             if failure.bits() & (0xffff << HealthFailure::PERMANENT_SHIFT) != 0 {
                 self.permanent_failure |= failure;
+                return Err(Self::map_failure(failure));
             }
             if self.fips_enabled() {
                 return Err(Self::map_failure(failure));
@@ -388,7 +402,7 @@ fn configured_memory_size(flags: Flags) -> usize {
         MemoryLimit::Auto => DEFAULT_MEMORY_SIZE,
         MemoryLimit::KiB(kib) => {
             let bytes = (kib as usize).saturating_mul(1024);
-            bytes.clamp(4096, 64 * 1024 * 1024).next_power_of_two()
+            bytes.clamp(1024, 512 * 1024 * 1024).next_power_of_two()
         }
     }
 }

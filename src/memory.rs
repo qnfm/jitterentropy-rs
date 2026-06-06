@@ -1,5 +1,5 @@
 #[cfg(feature = "alloc")]
-use alloc::{vec, vec::Vec};
+use alloc::vec::Vec;
 #[cfg(feature = "alloc")]
 use core::hint::black_box;
 #[cfg(feature = "alloc")]
@@ -18,10 +18,10 @@ impl MemoryNoise {
         if size == 0 || !size.is_power_of_two() {
             return None;
         }
-        Some(Self {
-            buf: vec![0u8; size],
-            idx: 0,
-        })
+        let mut buf = Vec::new();
+        buf.try_reserve_exact(size).ok()?;
+        buf.resize(size, 0);
+        Some(Self { buf, idx: 0 })
     }
 
     pub fn len(&self) -> usize {
