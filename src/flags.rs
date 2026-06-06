@@ -43,6 +43,18 @@ impl Flags {
         let raw = self.0 >> Self::MEMSIZE_SHIFT;
         MemoryLimit::from_raw(raw)
     }
+
+    pub const fn with_increased_hash_loop(self) -> Self {
+        let next = self.hash_loop().next_saturating();
+
+        Self((self.0 & !Self::HASHLOOP_MASK) | (next.raw() << Self::HASHLOOP_SHIFT))
+    }
+
+    pub fn increase_hash_loop(self) -> Self {
+        let next = self.hash_loop().next_saturating();
+
+        Self((self.0 & !Self::HASHLOOP_MASK) | (next.raw() << Self::HASHLOOP_SHIFT))
+    }
 }
 
 impl core::ops::BitOr for Flags {
@@ -81,6 +93,32 @@ impl HashLoop {
             Self::X32 => 32,
             Self::X64 => 64,
             Self::X128 => 128,
+        }
+    }
+
+    pub const fn next_saturating(self) -> Self {
+        match self {
+            Self::X1 => Self::X2,
+            Self::X2 => Self::X4,
+            Self::X4 => Self::X8,
+            Self::X8 => Self::X16,
+            Self::X16 => Self::X32,
+            Self::X32 => Self::X64,
+            Self::X64 => Self::X128,
+            Self::X128 => Self::X128,
+        }
+    }
+
+    pub const fn raw(self) -> u32 {
+        match self {
+            Self::X1 => 0,
+            Self::X2 => 1,
+            Self::X4 => 2,
+            Self::X8 => 3,
+            Self::X16 => 4,
+            Self::X32 => 5,
+            Self::X64 => 6,
+            Self::X128 => 7,
         }
     }
 }

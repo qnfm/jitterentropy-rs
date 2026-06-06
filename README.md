@@ -147,7 +147,6 @@ Optional checks:
 ```bash
 cargo test --no-default-features
 cargo test --no-default-features --features alloc
-cargo test --features serde
 cargo build --release --all-features
 ```
 

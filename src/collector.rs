@@ -93,6 +93,30 @@ impl EntropyCollector<PlatformTimer> {
 }
 
 impl<T: Timer> EntropyCollector<T> {
+    pub fn osr(&self) -> u32 {
+        self.osr
+    }
+
+    pub fn flags(&self) -> Flags {
+        self.flags
+    }
+
+    /// Return the next collector configuration used after an intermittent
+    /// health-test failure.
+    ///
+    /// The upstream C implementation treats intermittent failures as evidence
+    /// that the assumed entropy rate is too optimistic. It reallocates a new
+    /// collector with a higher OSR and stronger collection settings rather than
+    /// returning the intermittent error directly from `jent_read_entropy_safe`.
+    /// This helper keeps that policy out of the FFI module.
+    pub(crate) fn recovery_config(&self) -> Option<(u32, Flags)> {
+        let next_osr = self.osr.checked_add(1)?;
+        if next_osr > MAX_OSR {
+            return None;
+        }
+        Some((next_osr, self.flags.increase_hash_loop()))
+    }
+
     pub fn with_timer(
         osr: u32,
         flags: Flags,

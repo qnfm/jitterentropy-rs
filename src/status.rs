@@ -24,7 +24,9 @@ impl Status {
             version: JENT_VERSION,
             osr,
             flags: flags.bits(),
-            fips_enabled: flags.contains(Flags::FORCE_FIPS) || cfg!(feature = "force-fips"),
+            fips_enabled: flags.contains(Flags::FORCE_FIPS)
+                || flags.contains(Flags::NTG1)
+                || cfg!(feature = "force-fips"),
             ntg1_enabled: flags.contains(Flags::NTG1),
             memory_access_enabled: memory_size > 0,
             memory_size,

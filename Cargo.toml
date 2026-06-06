@@ -18,7 +18,7 @@ crate-type = ["rlib"]
 default = ["std", "alloc", "ffi"]
 std = []
 alloc = []
-ffi = []
+ffi = ["alloc"]
 force-fips = []
 raw-noise = []
 

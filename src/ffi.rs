@@ -7,24 +7,30 @@ use core::{
     ptr, slice,
 };
 
+use crate::error::ReadError;
 use crate::{collector::EntropyCollector, flags::Flags, JENT_VERSION};
+
+#[inline]
+fn ssize_max() -> usize {
+    isize::MAX as usize
+}
 
 #[repr(C)]
 pub struct rand_data {
     inner: EntropyCollector,
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn jent_version() -> c_uint {
     JENT_VERSION as c_uint
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn jent_entropy_init() -> c_int {
     jent_entropy_init_ex(1, 0)
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn jent_entropy_init_ex(osr: c_uint, flags: c_uint) -> c_int {
     match EntropyCollector::new(osr, Flags(flags)) {
         Ok(_) => 0,
@@ -32,7 +38,7 @@ pub extern "C" fn jent_entropy_init_ex(osr: c_uint, flags: c_uint) -> c_int {
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn jent_entropy_collector_alloc(osr: c_uint, flags: c_uint) -> *mut rand_data {
     match EntropyCollector::new(osr, Flags(flags)) {
         Ok(inner) => Box::into_raw(Box::new(rand_data { inner })),
@@ -48,7 +54,7 @@ pub extern "C" fn jent_entropy_collector_alloc(osr: c_uint, flags: c_uint) -> *m
 /// `jent_entropy_collector_alloc` that has not already been freed. Passing any
 /// other pointer, passing the same pointer twice, or using the pointer after
 /// this function returns is undefined behavior.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn jent_entropy_collector_free(ec: *mut rand_data) {
     if !ec.is_null() {
         unsafe {
@@ -65,15 +71,31 @@ pub unsafe extern "C" fn jent_entropy_collector_free(ec: *mut rand_data) {
 /// this crate. `data` must be valid for writes of `len` bytes. The memory
 /// regions referenced by `ec` and `data` must not alias in a way that violates
 /// Rust's aliasing rules.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn jent_read_entropy(
     ec: *mut rand_data,
     data: *mut c_char,
     len: usize,
 ) -> isize {
-    if ec.is_null() || data.is_null() {
+    if ec.is_null() {
         return -1;
     }
+
+    if len == 0 {
+        return 0;
+    }
+
+    if data.is_null() {
+        return -1;
+    }
+
+    // `slice::from_raw_parts_mut` has an `isize::MAX` allocation-size
+    // precondition. Returning an explicit error is safer than clamping here:
+    // clamping would silently satisfy only part of the caller's request.
+    if len > isize::MAX as usize {
+        return ReadError::OutputTooLarge.c_code();
+    }
+
     let ec = unsafe { &mut *ec };
     let out = unsafe { slice::from_raw_parts_mut(data.cast::<u8>(), len) };
     match ec.inner.fill_bytes(out) {
@@ -91,37 +113,66 @@ pub unsafe extern "C" fn jent_read_entropy(
 /// non-null, it must point to a live `rand_data` allocated by this crate.
 /// `data` must be valid for writes of `len` bytes. The caller must not use
 /// `*ecp` again if this function clears it to null.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn jent_read_entropy_safe(
     ecp: *mut *mut rand_data,
     data: *mut c_char,
     len: usize,
 ) -> isize {
-    if ecp.is_null() {
-        return -1;
+    if ecp.is_null() || data.is_null() {
+        return ReadError::NullCollector.c_code();
     }
+
+    if len == 0 {
+        return 0;
+    }
+
+    if len > ssize_max() {
+        return ReadError::OutputTooLarge.c_code();
+    }
+
     let ec = unsafe { *ecp };
     let rc = unsafe { jent_read_entropy(ec, data, len) };
     if rc >= 0 {
         return rc;
     }
 
-    if !ec.is_null() {
-        unsafe {
-            jent_entropy_collector_free(ec);
-        }
-        unsafe {
-            *ecp = ptr::null_mut();
-        }
+    if is_permanent_read_failure(rc) || !is_intermittent_read_failure(rc) || ec.is_null() {
+        return rc;
     }
-    let new_ec = jent_entropy_collector_alloc(1, 0);
+
+    let Some((osr, flags)) = unsafe { &*ec }.inner.recovery_config() else {
+        return rc;
+    };
+
+    unsafe {
+        jent_entropy_collector_free(ec);
+        *ecp = ptr::null_mut();
+    }
+
+    let new_ec = jent_entropy_collector_alloc(osr, flags.bits());
     if new_ec.is_null() {
         return rc;
     }
+
     unsafe {
         *ecp = new_ec;
+        jent_read_entropy(new_ec, data, len)
     }
-    unsafe { jent_read_entropy(new_ec, data, len) }
+}
+
+fn is_intermittent_read_failure(rc: isize) -> bool {
+    rc == ReadError::Rct.c_code()
+        || rc == ReadError::Apt.c_code()
+        || rc == ReadError::Lag.c_code()
+        || rc == ReadError::RctMemory.c_code()
+}
+
+fn is_permanent_read_failure(rc: isize) -> bool {
+    rc == ReadError::RctPermanent.c_code()
+        || rc == ReadError::AptPermanent.c_code()
+        || rc == ReadError::LagPermanent.c_code()
+        || rc == ReadError::RctMemoryPermanent.c_code()
 }
 
 /// Write collector status JSON into a caller-provided buffer.
@@ -131,7 +182,7 @@ pub unsafe extern "C" fn jent_read_entropy_safe(
 /// `ec` must be a valid, non-null pointer to a live `rand_data`. `buf` must be
 /// valid for writes of `buflen` bytes. If `buflen` is nonzero, the buffer must
 /// be writable for the full length and must not alias `ec`.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn jent_status(
     ec: *const rand_data,
     buf: *mut c_char,
@@ -157,7 +208,7 @@ pub unsafe extern "C" fn jent_status(
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn jent_secure_memory_supported() -> c_int {
     0
 }
