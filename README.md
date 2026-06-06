@@ -210,11 +210,7 @@ variation.
 
 ## License
 
-Set this to match the intended project license before publication.
-
-```text
-TODO: add license information
-```
+This project is licensed under the GNU General Public License v2.0.
 
 ## Acknowledgment
 
